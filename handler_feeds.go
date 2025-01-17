@@ -9,12 +9,12 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	database "github.com/uloamaka/rss_aggregator/internal/database"
-	"github.com/uloamaka/rss_aggregator/internal/database/auth"
 )
 
-func (apiCfg *apiConfig)handlerCreateUser(w http.ResponseWriter, r *http.Request) {
+func (apiCfg *apiConfig)handlerCreateFeed(w http.ResponseWriter, r *http.Request, user database.User) {
 	type parameters struct {
 		Name string `json:"name"`
+		URL string `json:"url"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -31,29 +31,21 @@ func (apiCfg *apiConfig)handlerCreateUser(w http.ResponseWriter, r *http.Request
 		return
 	}
 	now := time.Now()
-	user, err := apiCfg.DB.Createuser(r.Context(), database.CreateuserParams {
+	feed, err := apiCfg.DB.CreateFeed(r.Context(), database.CreateFeedParams {
 		ID:        pgtype.UUID{Bytes: [16]byte(userID), Valid: true},
 		Name:      params.Name,
+		Url: params.URL,
+		UserID: user.ID,
 		CreatedAt: pgtype.Timestamp{Time: now, Valid: true},
 		UpdatedAt: pgtype.Timestamp{Time: now, Valid: true},
 	})
 	if err != nil {
-		respondWithError(w, 400, fmt.Sprintf("Error creating user: %v", err))
+		respondWithError(w, 400, fmt.Sprintf("Error creating feed: %v", err))
 		return
 	}
-	respondWithJson(w, 201, databaseUserToUser(user))
+	respondWithJson(w, 201, feed)
 }
 
-func (apiCfg *apiConfig)handlerGetUser(w http.ResponseWriter, r *http.Request) { 
-	apiKey, err := auth.GetApiKey(r.Header)
-	if err != nil {
-		respondWithError(w, 403, fmt.Sprintf("Auth error: %v", err))
-		return
-	}
-	user, err := apiCfg.DB.GetUserByApiKey(r.Context(), apiKey)
-	if err != nil {
-		respondWithError(w, 400, fmt.Sprintf("Error geting user: %v", err))
-		return
-	}
-	respondWithJson(w, 200, databaseUserToUser(user))
-}
+// func (apiCfg *apiConfig)handlerGetUser(w http.ResponseWriter, r *http.Request, user database.User) { 
+// 	respondWithJson(w, 200, databaseUserToUser(user))
+// }

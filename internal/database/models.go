@@ -8,6 +8,15 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type Feed struct {
+	ID        pgtype.UUID
+	Name      string
+	Url       string
+	UserID    pgtype.UUID
+	CreatedAt pgtype.Timestamp
+	UpdatedAt pgtype.Timestamp
+}
+
 type User struct {
 	ID        pgtype.UUID
 	Name      string
