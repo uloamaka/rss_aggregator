@@ -43,7 +43,7 @@ func (apiCfg *apiConfig)handlerCreateFeed(w http.ResponseWriter, r *http.Request
 		respondWithError(w, 400, fmt.Sprintf("Error creating feed: %v", err))
 		return
 	}
-	respondWithJson(w, 201, feed)
+	respondWithJson(w, 201, databaseFeedToFeed(feed))
 }
 
 // func (apiCfg *apiConfig)handlerGetUser(w http.ResponseWriter, r *http.Request, user database.User) { 
