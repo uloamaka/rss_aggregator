@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"os"
 	"context"
+	"os/signal"
+    "syscall"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/cors"
@@ -67,6 +69,7 @@ func main() {
 	v1Router.Get("/healthz", handlerReadiness)
 	v1Router.Get("/err", handlerError)
 	v1Router.Post("/user", apiCfg.handlerCreateUser)
+	v1Router.Get("/user", apiCfg.handlerGetUser)
 
 
 	router.Mount("/api/v1", v1Router)
@@ -76,11 +79,23 @@ func main() {
 		Addr: ":" + portString,
 	}
 
-	fmt.Println("Server running on port", portString)
+	go func() {
+        fmt.Println("Server running on port", portString)
+        if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+            log.Fatalf("ListenAndServe(): %s", err)
+        }
+    }()
 
-	err = srv.ListenAndServe()
-	if err != nil {
-		log.Fatal(err)
-	}
+    // Graceful shutdown
+    quit := make(chan os.Signal, 1)
+    signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+    <-quit
+
+    fmt.Println("Shutting down server...")
+
+    if err := srv.Shutdown(ctx); err != nil {
+        log.Fatalf("Server Shutdown Failed:%+v", err)
+    }
+    fmt.Println("Server exited properly")
 
 }
