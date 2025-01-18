@@ -1,20 +1,21 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
-	"context"
 	"os/signal"
-    "syscall"
+	"syscall"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/cors"
+	"github.com/jackc/pgx/v5"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 	database "github.com/uloamaka/rss_aggregator/internal/database"
-	"github.com/jackc/pgx/v5"
 )
 
 type apiConfig struct {
@@ -23,7 +24,7 @@ type apiConfig struct {
 
 func main() {
 	ctx := context.Background()
-
+	
 	godotenv.Load(".env")
 
 	
@@ -49,12 +50,14 @@ func main() {
 	defer conn.Close(ctx)
 
 	// queries := tutorial.New(conn)
-
+	db := database.New(conn)
 	apiCfg := apiConfig {
-		DB: database.New(conn),
+		DB: db,
 	}
 
-	router := chi.NewRouter()
+	go startScraping(db, 10, time.Minute)
+
+	router := chi.NewRouter() 
 
 	router.Use(cors.Handler(cors.Options{
 		AllowedOrigins: []string{"https://*", "http://"},
@@ -74,8 +77,11 @@ func main() {
 	v1Router.Post("/feed", apiCfg.middlewareAuth(apiCfg.handlerCreateFeed))
 	v1Router.Get("/feed", apiCfg.handlerGetFeeds)
 
+	v1Router.Get("/posts", apiCfg.middlewareAuth(apiCfg.handlerGetPostsForUser))
+
 	v1Router.Post("/feed_follows", apiCfg.middlewareAuth(apiCfg.handlerCreateFeedFollows))
 	v1Router.Get("/feed_follows", apiCfg.middlewareAuth(apiCfg.handlerGetFeedFollows))
+	v1Router.Delete("/feed_follows/{feedFollowID}", apiCfg.middlewareAuth(apiCfg.handlerDeleteFeedFollows))
 
 	router.Mount("/api/v1", v1Router)
 
@@ -86,6 +92,7 @@ func main() {
 
 	go func() {
         fmt.Println("Server running on port", portString)
+
         if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
             log.Fatalf("ListenAndServe(): %s", err)
         }
