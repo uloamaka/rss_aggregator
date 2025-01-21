@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -23,49 +22,46 @@ type apiConfig struct {
 }
 
 func main() {
-	ctx := context.Background()
-	
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	godotenv.Load(".env")
 
-	
 	portString := os.Getenv("PORT")
 	if portString == "" {
 		log.Fatal("PORT is not found in the environment")
 	}
-	
+
 	dbURL := os.Getenv("DB_URL")
 	if dbURL == "" {
 		log.Fatal("DB_URL is not found in the environment")
 	}
 
-	// conn, err := sql.Open("postgres", dbURL)"user=pqgotest dbname=pqgotest sslmode=verify-full"
-	// if err != nil {
-	// 	log.Fatal("Can't connect to database:", err)
-	// }
-
-	conn, err := pgx.Connect(ctx, dbURL )
+	conn, err := pgx.Connect(ctx, dbURL)
 	if err != nil {
 		log.Fatal("Can't connect to database:", err)
 	}
 	defer conn.Close(ctx)
 
-	// queries := tutorial.New(conn)
 	db := database.New(conn)
-	apiCfg := apiConfig {
+	apiCfg := apiConfig{
 		DB: db,
 	}
 
-	go startScraping(db, 10, time.Minute)
+	scraperDone := make(chan struct{})
+	go func() {
+		defer close(scraperDone)
+		startScraping(db, 10, time.Minute)
+	}()
 
-	router := chi.NewRouter() 
-
+	router := chi.NewRouter()
 	router.Use(cors.Handler(cors.Options{
-		AllowedOrigins: []string{"https://*", "http://"},
-		AllowedMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders: []string{"*"},
-		ExposedHeaders: []string{"Link"},
+		AllowedOrigins:   []string{"https://*", "http://*"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"*"},
+		ExposedHeaders:   []string{"Link"},
 		AllowCredentials: false,
-		MaxAge: 300,
+		MaxAge:          300,
 	}))
 
 	v1Router := chi.NewRouter()
@@ -85,29 +81,39 @@ func main() {
 
 	router.Mount("/api/v1", v1Router)
 
-	srv := &http.Server {
+	srv := &http.Server{
 		Handler: router,
-		Addr: ":" + portString,
+		Addr:    ":" + portString,
 	}
 
 	go func() {
-        fmt.Println("Server running on port", portString)
+		log.Printf("Server running on port %s", portString)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("ListenAndServe(): %v", err)
+		}
+	}()
 
-        if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-            log.Fatalf("ListenAndServe(): %s", err)
-        }
-    }()
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+	<-quit
 
-    // Graceful shutdown
-    quit := make(chan os.Signal, 1)
-    signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
-    <-quit
+	log.Println("Shutting down server...")
 
-    fmt.Println("Shutting down server...")
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
 
-    if err := srv.Shutdown(ctx); err != nil {
-        log.Fatalf("Server Shutdown Failed:%+v", err)
-    }
-    fmt.Println("Server exited properly")
+	cancel()
 
+	select {
+	case <-scraperDone:
+		log.Println("Scraper shut down successfully")
+	case <-shutdownCtx.Done():
+		log.Println("Timeout waiting for scraper to shutdown")
+	}
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Printf("Server Shutdown Failed: %v", err)
+	}
+
+	log.Println("Server exited properly")
 }
