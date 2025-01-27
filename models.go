@@ -89,16 +89,10 @@ type Post struct {
 }
 
 func databasePostToPOst(dbPost database.Post) Post {
-	// var description *string 
-	// if dbPost.Description.Valid {
-	// 	description = &dbPost.Description.String
-	// }
-
 	return Post{
 		ID: dbPost.ID,
 		Title: dbPost.Title,
 		Description: dbPost.Description,
-		// Description: description,
 		PublishedAt: dbPost.PublishedAt,
 		Url: dbPost.Url,
 		FeedID: dbPost.FeedID,
